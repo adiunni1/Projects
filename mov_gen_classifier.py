@@ -216,12 +216,13 @@ for i in range(len(train_my_features)):
 
 
 genre_and_distances = train_movies[['Genre']]
-genre_and_distances['Distance'] = genre_and_distances
-genre_and_distances
+genre_and_distances['Distance'] = pd.to_numeric(genre_and_distances['Distance'], errors='coerce')
+genre_and_distances = genre_and_distances.dropna(subset=['Distance'])
 my_assigned_genre = genre_and_distances.nsmallest(7, 'Distance')['Genre'].value_counts().idxmax()
-my_assigned_genre_was_correct = True
-
+assert my_assigned_genre in ["thriller", "comedy"], "Assigned genre is not valid!"
+my_assigned_genre_was_correct = my_assigned_genre == actual_genre
 print("The assigned genre, {}, was{}correct.".format(my_assigned_genre, " " if my_assigned_genre_was_correct else " not "))
+
 def classify(test_row, train_rows, train_labels, k):
     """Return the most common class among k nearest neighbors to test_row."""
     distances = np.sqrt(np.sum((train_rows - test_row) ** 2, axis=1))

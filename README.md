@@ -7,12 +7,12 @@ What This Is
 
 Writing code directly in machine language (raw numbers the computer understands) is painful and error-prone. Assembly language is a human-readable alternative: instead of calculating numeric instruction values by hand, you write things like ADD or STORE, and an assembler translates that into the binary the machine actually runs.
 
-This project is Phase 1 of a two-phase assembler for the Duck Machine, a simulated CPU architecture used in CIS 211 at the University of Oregon. Phase 1's job is to take "shorthand" assembly code and resolve it into a fully explicit form that Phase 2 can then convert into machine code.
+This project is Phase 1 of a two-phase assembler for the Duck Machine, a simulated CPU architecture used in CIS 211 at the University of Oregon. In my mind, Phase 1's job is to take "shorthand" assembly code and resolve it into a fully explicit form that Phase 2 can then convert into machine code.
 
 Specifically, Phase 1 handles two things that raw Duck Machine assembly doesn't support:
 
 
-Symbolic labels — instead of calculating memory addresses by hand (e.g., "jump 3 instructions back"), you label a line and refer to it by name
+Symbolic labels. Instead of calculating memory addresses by hand (e.g., "jump 3 instructions back"), you label a line and refer to it by name
 JUMP pseudo-instructions — a cleaner way to write conditional and unconditional branches, which get translated into the actual ADD r15,... instructions the CPU understands
 
 

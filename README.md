@@ -117,4 +117,177 @@ Dependencies
 Python 3.10+
 Standard library only (re, argparse, sys, logging)
 
+# Appointment Scheduler
+
+## What This Is
+
+A Python implementation of an appointment scheduling system that tracks a list of appointments and automatically detects any **scheduling conflicts** — cases where two appointments overlap in time.
+
+The project is built around two classes: `Appt` (a single appointment) and `Agenda` (a collection of appointments), and demonstrates object-oriented design using Python's special methods to make the objects work naturally with comparison operators and built-in functions.
+
+---
+
+## How It Works
+
+### `Appt` — A Single Appointment
+
+Each appointment has a start time, an end time, and a description. The class defines comparison operators so appointments can be compared and sorted intuitively:
+
+| Operator | Meaning |
+|----------|---------|
+| `appt1 < appt2` | `appt1` ends before or exactly when `appt2` starts (no overlap) |
+| `appt1 > appt2` | `appt1` starts after or exactly when `appt2` ends (no overlap) |
+| `appt1 == appt2` | Both appointments cover the exact same time period |
+
+Two helper methods build on these:
+
+- **`overlaps(other)`** — returns `True` if there is any time overlap between the two appointments
+- **`intersect(other)`** — returns a new `Appt` representing the overlapping time window, or `None` if there is no overlap
+
+### `Agenda` — A Collection of Appointments
+
+An `Agenda` holds a list of `Appt` objects and provides two key operations:
+
+- **`sort()`** — sorts all appointments by start time
+- **`conflicts()`** — returns a new `Agenda` containing only the overlapping portions of any conflicting appointments
+
+The conflict detection algorithm sorts appointments first, then uses a nested loop with an early exit: once it finds an appointment that starts after the current one ends, it can skip the rest (since all subsequent appointments will start even later).
+
+---
+
+## Example
+
+```python
+from datetime import datetime
+from appointments import Appt, Agenda
+
+appt1 = Appt(datetime(2024, 3, 15, 13, 30), datetime(2024, 3, 15, 15, 30), "Early afternoon nap")
+appt2 = Appt(datetime(2024, 3, 15, 15, 0),  datetime(2024, 3, 15, 16, 0),  "Coffee break")
+
+agenda = Agenda()
+agenda.append(appt1)
+agenda.append(appt2)
+
+conflicts = agenda.conflicts()
+print(conflicts)
+# 2024-03-15 15:00 15:30 | Overlap
+```
+
+---
+
+## Key Design Decisions
+
+- **Comparison operators** (`__lt__`, `__gt__`, `__eq__`) are defined in terms of the *time period*, not the description — two appointments at the same time are "equal" regardless of what they're called
+- **`overlaps` is derived from `__lt__` and `__gt__`** rather than implementing its own logic, keeping the definition clean and consistent
+- **Conflict detection uses an early exit** — after sorting, once a non-overlapping later appointment is found, the inner loop breaks, making the algorithm more efficient than a naive double loop
+
+---
+
+## Dependencies
+
+- Python 3.10+
+- Standard library only (`datetime`)
+
+---
+
+## Files
+
+- **`appointments.py`** — contains both the `Appt` and `Agenda` classes, plus a short demo in the `__main__` block
+
+
+# Movie Genre Classifier
+
+## What This Is
+
+This project builds a machine learning classifier that predicts whether a movie is a **comedy or thriller** based purely on the words used in its screenplay. Given a movie's word-frequency profile, the classifier finds the most similar movies in the training set and uses their genres to make a prediction.
+
+The dataset contains around 5,000 stemmed word features extracted from movie scripts, along with metadata like title, year, and rating.
+
+---
+
+## How It Works
+
+### The Core Idea: K-Nearest Neighbors (k-NN)
+
+Rather than learning explicit rules about what makes a movie a comedy or thriller, k-NN works by similarity: given a new movie, find the *k* most similar movies in the training set and take a majority vote on their genres.
+
+"Similarity" here means **Euclidean distance** across all word-frequency features. Two movies that use words like "laugh" and "marri" (stemmed form of "marry") frequently will be close together in feature space; movies heavy on "dead" and "cop" will cluster differently.
+
+### Pipeline
+
+1. **Data Loading** — load `movies.csv` (one row per movie, columns for each stemmed word) and `stem.csv` (mapping stems back to their original words)
+2. **Exploratory Analysis** — visualize word correlations and genre distributions across the dataset
+3. **Train/Test Split** — 85% training, 15% test (no shuffling; sequential split)
+4. **Feature Selection** — experiment with different word feature subsets to find the most predictive ones
+5. **Classification** — for each test movie, compute distances to all training movies and take a majority vote among the *k* nearest neighbors
+6. **Evaluation** — measure proportion of correct predictions on the held-out test set
+
+---
+
+## Key Functions
+
+### `distance(features_array1, features_array2)`
+Computes Euclidean distance between two movies represented as arrays of word-frequency values. Works across any number of features.
+
+### `classify(test_row, train_rows, train_labels, k)`
+Core classifier. Given a test movie's feature vector, finds the *k* nearest neighbors in the training set and returns the most common genre among them.
+
+```python
+classify(test_features, train_features, train_labels, k=13)
+```
+
+### `classify_feature_row(row)`
+Wrapper around `classify` for use with `DataFrame.apply()` — runs the classifier on every row of the test set in one call.
+
+### `most_common(label, table)`
+Returns the most frequent value in a column of a DataFrame. Used to tally genre votes among nearest neighbors.
+
+### `su(array)`
+Standardizes an array to zero mean and unit standard deviation. Used when computing correlations between word features.
+
+---
+
+## Feature Sets Explored
+
+Two feature sets were tested and compared:
+
+| Feature Set | Words |
+|-------------|-------|
+| Common words | `i`, `the`, `to`, `a`, `it`, `and`, `that`, `of`, `your`, `what` |
+| Genre-specific words | `laugh`, `marri`, `dead`, `heart`, `cop` |
+
+The genre-specific word set captures more meaningful signal for distinguishing comedies from thrillers.
+
+---
+
+## Results
+
+- The k-NN classifier achieved **85% accuracy** on the held-out test set
+- Best results used k=13 neighbors and the genre-specific feature set
+- Accuracy was measured as the proportion of test movies whose predicted genre matched the actual genre
+
+---
+
+## Dependencies
+
+```
+numpy
+pandas
+matplotlib
+seaborn
+```
+
+Install with:
+```bash
+pip install numpy pandas matplotlib seaborn
+```
+
+---
+
+## Files
+
+- **`mov_gen_classifier.py`** — main script with all analysis and classification code
+- **`movies.csv`** — dataset of movies with stemmed word frequencies and genre labels (not included in repo; required to run)
+- **`stem.csv`** — mapping from stemmed words back to their original forms (not included in repo; required to run)
+
 

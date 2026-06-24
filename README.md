@@ -1,7 +1,7 @@
 # Projects
 A compilation of projects that I've done. 
 
-Duck Machine Assembler — Phase 1
+**Duck Machine Assembler — Phase 1**
 
 What This Is
 

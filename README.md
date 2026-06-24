@@ -7,7 +7,7 @@ A compilation of projects that I've done.
 
 ## What This Is
 
-A Python implementation of an appointment scheduling system that tracks a list of appointments and automatically detects any **scheduling conflicts** — cases where two appointments overlap in time.
+This is a a Python implementation of an appointment scheduling system that tracks a list of appointments and automatically detects any **scheduling conflicts**, particularly where cases where two appointments overlap in time.
 
 The project is built around two classes: `Appt` (a single appointment) and `Agenda` (a collection of appointments), and demonstrates object-oriented design using Python's special methods to make the objects work naturally with comparison operators and built-in functions.
 

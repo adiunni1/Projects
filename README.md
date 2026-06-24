@@ -85,7 +85,7 @@ print(conflicts)
 
 ## What This Is
 
-This project builds a machine learning classifier that predicts whether a movie is a **comedy or thriller** based purely on the words used in its screenplay. Given a movie's word-frequency profile, the classifier finds the most similar movies in the training set and uses their genres to make a prediction.
+This project builds a machine learning classifier that predicts whether a movie is a **comedy or thriller** based purely on the words used in its screenplay. I built it on the intuition that a movie would have word-frequency leaning towards the genre it is, and the classifier finds the most similar movies in the training set and uses their genres to make a prediction.
 
 The dataset contains around 5,000 stemmed word features extracted from movie scripts, along with metadata like title, year, and rating.
 

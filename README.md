@@ -6,13 +6,10 @@ A compilation of projects that I've done.
 
 ## What This Is
 
-This project lifts an existing 11-year welfare check call analysis into a full
-cloud-native ML pipeline on AWS, culminating in a live REST API that predicts
-whether a 911 welfare check call will result in direct assistance based on the
-responding agency, year, and call priority.
+This project was my first experiment with AWS pipelines, and lifts an existing 11-year welfare check call analysis into a full cloud-native ML pipeline culminating in a live REST API that predicts whether a 911 welfare check call will result in direct assistance based on the esponding agency, year, and call priority.
 
-The underlying analysis — comparing outcomes between the Eugene Police Department
-(EPD) and CAHOOTS, Eugene's community-based crisis response program — originally
+The underlying analysis is comparing outcomes between the Eugene Police Department
+(EPD) and CAHOOTS, Eugene's community-based crisis response program, which was originally
 informed a $2.2M civic budget decision. This project re-implements that analysis
 as a production-ready cloud data pipeline.
 
@@ -166,8 +163,8 @@ aws s3 cp /path/to/data/ s3://your-bucket/raw/ --recursive \
 ```bash
 python clean_cahoots.py
 ```
-Reads 11 CSVs from S3, filters for welfare checks, identifies CAHOOTS calls,
-recodes outcomes, writes wc_clean.csv back to S3.
+This will reads 11 CSVs from S3, filter for welfare checks, identify CAHOOTS calls,
+recode outcomes, and write wc_clean.csv back to S3.
 
 ### Step 3 — Train model
 ```bash

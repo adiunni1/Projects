@@ -20,37 +20,57 @@ POST https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict
 
 Note: Opening this URL directly in a browser will show {"message":"Not Found"} —
 this is expected behavior. The endpoint only accepts POST requests with a JSON body.
-See the Try It Live section below for how to call it.
+Check out the **Try It** Live section below for how to call it.
 
+**Try It Live!**
 
-
-
-Try It Live
-
-You can test the live API in three ways — no installation required for options 1 and 2.
+You can test the live API in three ways, and there's no installation required for options 1 and 2.
 
 Option 1 — Hoppscotch (browser-based, easiest)
 
 
 Go to hoppscotch.io
 Set the method to POST
-Paste this URL: https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict
-Click the Headers tab and add:
-
-Key: Content-Type Value: application/json
+Paste this URL:
 
 
-
-Click the Body tab, select JSON, and paste:
-
-
-json{"agency": "CAHOOTS", "year": 2022, "priority": 2}
+   https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict
 
 
-Click Send — you should see the prediction response on the right
+Click the Headers tab and confirm content-type is set to application/json
+Click the Body tab, set Content Type to application/json, and paste exactly this into the Raw Request Body field:
 
 
-Try swapping "CAHOOTS" for "EPD" to see the contrast in predicted outcomes.
+{"agency": "CAHOOTS", "year": 2022, "priority": 2}
+
+
+Important: Make sure the body starts with { and not with the word json. If you see json{...} in the body field, delete the json prefix.
+
+
+Fix the network error: Hoppscotch's default "Browser" mode is blocked by browser security restrictions. When you see "Network Error: Unknown cause", look for the Interceptor panel and switch from Browser to Proxy. Then click Send again.
+You should see the prediction response appear on the right side of the screen.
+
+
+Try swapping "CAHOOTS" for "EPD" in the body to see the contrast in predicted outcomes.
+
+Expected responses:
+
+CAHOOTS call:
+
+json{
+  "prediction": "Assisted",
+  "confidence": 0.678,
+  "inputs": {"agency": "CAHOOTS", "year": 2022, "priority": 2}
+}
+
+EPD call (same year, same priority):
+
+json{
+  "prediction": "Not Assisted",
+  "confidence": 0.878,
+  "inputs": {"agency": "EPD", "year": 2022, "priority": 2}
+}
+
 
 Option 2 — curl (terminal)
 
@@ -66,6 +86,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"agency": "EPD", "year": 2022, "priority": 2}'
 
+
 Option 3 — Python
 
 pythonimport requests
@@ -76,23 +97,6 @@ response = requests.post(
 )
 print(response.json())
 
-Example Responses
-
-CAHOOTS call:
-
-json{
-  "prediction": "Assisted",
-  "confidence": 0.678,
-  "inputs": {"agency": "CAHOOTS", "year": 2022, "priority": 2}
-}
-
-EPD call (same inputs):
-
-json{
-  "prediction": "Not Assisted",
-  "confidence": 0.878,
-  "inputs": {"agency": "EPD", "year": 2022, "priority": 2}
-}
 
 API Parameters
 

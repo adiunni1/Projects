@@ -13,12 +13,90 @@ The underlying analysis is comparing outcomes between the Eugene Police Departme
 informed a $2.2M civic budget decision. This project re-implements that analysis
 as a production-ready cloud data pipeline.
 
-**Live API endpoint:**
-```
-POST https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict
-```
+Live API endpoint:
 
----
+POST https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict
+
+
+Note: Opening this URL directly in a browser will show {"message":"Not Found"} —
+this is expected behavior. The endpoint only accepts POST requests with a JSON body.
+See the Try It Live section below for how to call it.
+
+
+
+
+Try It Live
+
+You can test the live API in three ways — no installation required for options 1 and 2.
+
+Option 1 — Hoppscotch (browser-based, easiest)
+
+
+Go to hoppscotch.io
+Set the method to POST
+Paste this URL: https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict
+Click the Headers tab and add:
+
+Key: Content-Type Value: application/json
+
+
+
+Click the Body tab, select JSON, and paste:
+
+
+json{"agency": "CAHOOTS", "year": 2022, "priority": 2}
+
+
+Click Send — you should see the prediction response on the right
+
+
+Try swapping "CAHOOTS" for "EPD" to see the contrast in predicted outcomes.
+
+Option 2 — curl (terminal)
+
+bash# CAHOOTS call
+curl -X POST \
+  https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict \
+  -H "Content-Type: application/json" \
+  -d '{"agency": "CAHOOTS", "year": 2022, "priority": 2}'
+
+# EPD call (same year, same priority — different outcome)
+curl -X POST \
+  https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict \
+  -H "Content-Type: application/json" \
+  -d '{"agency": "EPD", "year": 2022, "priority": 2}'
+
+Option 3 — Python
+
+pythonimport requests
+
+response = requests.post(
+    "https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict",
+    json={"agency": "CAHOOTS", "year": 2022, "priority": 2}
+)
+print(response.json())
+
+Example Responses
+
+CAHOOTS call:
+
+json{
+  "prediction": "Assisted",
+  "confidence": 0.678,
+  "inputs": {"agency": "CAHOOTS", "year": 2022, "priority": 2}
+}
+
+EPD call (same inputs):
+
+json{
+  "prediction": "Not Assisted",
+  "confidence": 0.878,
+  "inputs": {"agency": "EPD", "year": 2022, "priority": 2}
+}
+
+API Parameters
+
+ParameterTypeValuesDefaultagencystring"CAHOOTS" or "EPD""EPD"yearinteger2015 to 20252023priorityinteger1 to 93
 
 ## Architecture
 

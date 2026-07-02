@@ -2,6 +2,284 @@
 A compilation of projects that I've done. 
 
 
+# CAHOOTS Welfare Check Analyzer — Cloud ML Pipeline
+
+## What This Is
+
+This project lifts an existing 11-year welfare check call analysis into a full
+cloud-native ML pipeline on AWS, culminating in a live REST API that predicts
+whether a 911 welfare check call will result in direct assistance based on the
+responding agency, year, and call priority.
+
+The underlying analysis — comparing outcomes between the Eugene Police Department
+(EPD) and CAHOOTS, Eugene's community-based crisis response program — originally
+informed a $2.2M civic budget decision. This project re-implements that analysis
+as a production-ready cloud data pipeline.
+
+**Live API endpoint:**
+```
+POST https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict
+```
+
+---
+
+## Architecture
+
+```
+Raw CSVs (11 files, 1.4M rows)
+        |
+        v
+   Amazon S3
+   (raw/)
+        |
+        v
+ clean_cahoots.py
+ (Python + boto3 + pandas)
+ - Filter welfare check calls
+ - Identify CAHOOTS via J-pattern + agency field
+ - Recode 40+ outcomes into 8 categories
+        |
+        v
+   Amazon S3
+   (clean/wc_clean.csv — 93,189 rows)
+        |
+        +----------------+
+        |                |
+        v                v
+  Amazon Athena     train_local.py
+  (SQL queries      (scikit-learn
+   on S3 data)       logistic regression)
+                         |
+                         v
+                    Amazon S3
+                    (model-output/model.joblib)
+                         |
+                         v
+               precompute_predictions.py
+               (198 predictions cached)
+                         |
+                         v
+                    Amazon S3
+                    (model-output/predictions_lookup.json)
+                         |
+                         v
+                 AWS Lambda Function
+                 (cahoots-predictor)
+                         |
+                         v
+                 Amazon API Gateway
+                 (public REST endpoint)
+```
+
+**AWS Services used:** S3, IAM, Athena, Lambda, API Gateway, CloudWatch
+
+---
+
+## Key Findings (reproduced in SQL on cloud data)
+
+| Agency | Assisted Rate | Arrests |
+|--------|--------------|---------|
+| CAHOOTS | 48.1% | 0 |
+| EPD | 9.2% | 875 |
+
+Chi-square test: p < 0.001 across 93,189 welfare check calls, 2015-2025.
+
+The ML model confirmed agency as the strongest predictor of outcome by far
+(coefficient: 2.71), more than 13x stronger than priority and 340x stronger
+than year.
+
+---
+
+## Live API Usage
+
+**Request:**
+```bash
+curl -X POST \
+  https://91lnkl8d42.execute-api.us-west-2.amazonaws.com/prod/predict \
+  -H "Content-Type: application/json" \
+  -d '{"agency": "CAHOOTS", "year": 2022, "priority": 2}'
+```
+
+**Response:**
+```json
+{
+  "prediction": "Assisted",
+  "confidence": 0.678,
+  "inputs": {
+    "agency": "CAHOOTS",
+    "year": 2022,
+    "priority": 2
+  }
+}
+```
+
+**Parameters:**
+| Parameter | Type | Values |
+|-----------|------|--------|
+| agency | string | "CAHOOTS" or "EPD" |
+| year | integer | 2015 to 2025 |
+| priority | integer | 1 to 9 |
+
+---
+
+## Project Structure
+
+```
+cahoots-aws-pipeline/
+├── clean_cahoots.py          # Stage 2: reads raw CSVs from S3, cleans, writes back
+├── train_local.py            # Stage 3: trains logistic regression, saves model to S3
+├── precompute_predictions.py # Stage 3: precomputes all 198 predictions, saves to S3
+├── launch_training.py        # Stage 3: SageMaker training job launcher (alt. approach)
+├── lambda_package/
+│   └── lambda_function.py   # Stage 4: Lambda handler, loads lookup table from S3
+├── training/
+│   └── train.py             # Stage 3: SageMaker training script
+└── notes.txt                # API URL and project notes
+```
+
+**S3 bucket structure:**
+```
+cahoots-pipeline-adiunni/
+├── raw/                          # 11 original CSVs (1.4M rows)
+├── clean/wc_clean.csv            # Cleaned dataset (93,189 rows)
+├── model-output/model.joblib     # Trained logistic regression model
+├── model-output/predictions_lookup.json  # Precomputed predictions
+└── athena-results/               # Athena SQL query outputs
+```
+
+---
+
+## Reproducing This Project
+
+### Prerequisites
+- AWS account with IAM user configured via `aws configure`
+- Python 3.12 with boto3, pandas, scikit-learn, joblib installed
+- S3 bucket created in us-west-2
+
+### Step 1 — Upload raw data
+```bash
+aws s3 cp /path/to/data/ s3://your-bucket/raw/ --recursive \
+  --include "EugeneCAD*noloc.csv"
+```
+
+### Step 2 — Run cleaning pipeline
+```bash
+python clean_cahoots.py
+```
+Reads 11 CSVs from S3, filters for welfare checks, identifies CAHOOTS calls,
+recodes outcomes, writes wc_clean.csv back to S3.
+
+### Step 3 — Train model
+```bash
+python train_local.py
+```
+Loads wc_clean.csv from S3, trains logistic regression (agency, year, priority
+as features, Assisted/Not Assisted as target), saves model.joblib to S3.
+Accuracy: 73.7% on held-out test set (15% split).
+
+### Step 4 — Precompute predictions
+```bash
+python precompute_predictions.py
+```
+Generates predictions for all 198 combinations of agency (2) x year (11) x
+priority (9), saves lookup JSON to S3.
+
+### Step 5 — Deploy Lambda + API Gateway
+See AWS console setup instructions in deployment notes. Lambda function loads
+the predictions lookup from S3 on first invocation and caches it in memory.
+
+---
+
+## Athena Queries
+
+Connect to the cahoots_db database in AWS Athena (us-west-2) to run SQL
+directly against the cleaned S3 data.
+
+**Outcome proportions by agency:**
+```sql
+SELECT
+  agency_clean,
+  outcome,
+  COUNT(*) as n,
+  ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY agency_clean), 1) as pct
+FROM cahoots_db.welfare_checks
+GROUP BY agency_clean, outcome
+ORDER BY agency_clean, pct DESC;
+```
+
+**Call volume by year:**
+```sql
+SELECT yr, agency_clean, COUNT(*) as n
+FROM cahoots_db.welfare_checks
+GROUP BY yr, agency_clean
+ORDER BY yr, agency_clean;
+```
+
+**Zero arrest confirmation:**
+```sql
+SELECT agency_clean, COUNT(*) as total_arrests
+FROM cahoots_db.welfare_checks
+WHERE outcome = 'Arrest'
+GROUP BY agency_clean;
+```
+
+---
+
+## ML Model Details
+
+| Property | Value |
+|----------|-------|
+| Algorithm | Logistic Regression (scikit-learn) |
+| Features | agency_binary, yr_numeric, priority_numeric |
+| Target | 1 = Assisted, 0 = Not Assisted |
+| Train/test split | 85% / 15% (stratified) |
+| Accuracy | 73.7% |
+| Strongest predictor | agency_binary (coefficient: 2.71) |
+| CAHOOTS zero arrests | Confirmed across 47,872 calls |
+
+---
+
+## Cost
+
+This project runs almost entirely within the AWS free tier:
+- S3: ~$0.00 (well under 5GB free tier limit)
+- Athena: ~$0.00 (13MB file, $5/TB scanned)
+- Lambda + API Gateway: free tier covers 1M requests/month
+- Local training: free (runs on your laptop)
+
+Total estimated cost: under $0.05
+
+---
+
+## Related Project
+
+The original R-based analysis that this pipeline is built on:
+[github.com/adiunni1/cahoots-welfare-check-analysis](https://github.com/adiunni1/cahoots-welfare-check-analysis)
+
+---
+
+## Dependencies
+
+```
+boto3
+pandas
+scikit-learn
+joblib
+numpy
+sagemaker==2.232.2
+```
+
+Install:
+```bash
+pip install boto3 pandas scikit-learn joblib numpy sagemaker==2.232.2
+```
+
+---
+
+## Author
+
+Adi Unni — github.com/adiunni1
+
 
 # Appointment Scheduler
 

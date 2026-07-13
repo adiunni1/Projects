@@ -3,7 +3,7 @@ A compilation of projects that I've done.
 
 # Stock Price Movement Predictor
 
-An end-to-end machine learning pipeline that predicts **whether a stock will go UP or DOWN the next trading day** — framed as a binary classification problem, not a price-prediction problem (which is far more tractable and honest). Built with XGBoost, time-aware validation (including walk-forward validation and a trading-strategy backtest against a SPY buy-and-hold benchmark), and deployed as a serverless REST API on AWS (S3, Lambda, API Gateway).
+I built an end-to-end machine learning pipeline that predicts **whether a stock will go UP or DOWN the next trading day**, framed as a binary classification problem, not a price-prediction problem (which is far more tractable and honest). Built with XGBoost, time-aware validation (including walk-forward validation and a trading-strategy backtest against a SPY buy-and-hold benchmark), and deployed as a serverless REST API on AWS (S3, Lambda, API Gateway).
 
 **Full write-up, code, and deployment guide:** [`stock-predictor/`](stock-predictor/README.md)
 

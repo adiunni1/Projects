@@ -3,9 +3,9 @@ A compilation of projects that I've done.
 
 # Stock Price Movement Predictor 📈
 
-An end-to-end machine learning pipeline that predicts **whether a stock will go UP or DOWN the next trading day** — framed as a binary classification problem, not a price-prediction problem (which is far more tractable and honest).
+I decided to build an end-to-end machine learning pipeline that predicts **whether a stock will go UP or DOWN the next trading day**  framed as a binary classification problem, not a price-prediction problem (which is far more tractable and honest).
 
-Built to practice time-series feature engineering, XGBoost classification, and deploying ML models as serverless REST APIs on AWS.
+My goal was to practice building time-series feature engineering, XGBoost classification, and deploying ML models as serverless REST APIs on AWS.
 
 **Live API:**
 ```
@@ -17,7 +17,7 @@ POST https://<your-api-gateway-url>/prod/predict
 
 ## Why Classification, Not Regression?
 
-Predicting exact stock prices is notoriously unreliable. Predicting *direction* (up or down) is a more tractable problem: it transforms an unbounded regression target into a binary label, and the question "will this go up tomorrow?" maps cleanly to real trading decisions.
+I knew that predicting exact stock prices is notoriously unreliable but redicting *direction* (up or down) is a more tractable problem. It transforms an unbounded regression target into a binary label, and the question "will this go up tomorrow?" maps cleanly to real trading decisions.
 
 ---
 
@@ -74,7 +74,7 @@ All features are computed from raw OHLCV (Open, High, Low, Close, Volume) data:
 
 ## Key Design Decision: Time-Aware Train/Test Split
 
-Stock data is sequential. Randomly shuffling before splitting would allow the model to "see the future" during training — a form of data leakage that inflates test accuracy but fails in production.
+Stock data is sequential. Randomly shuffling before splitting would allow the model to "see the future" during training, a form of data leakage that inflates test accuracy but fails in production.
 
 ```
 ────────────────────────────────────────────────────────

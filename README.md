@@ -1,7 +1,7 @@
 # Projects
 A compilation of projects that I've done. 
 
-# Stock Price Movement Predictor 📈
+# Stock Price Movement Predictor
 
 I decided to build an end-to-end machine learning pipeline that predicts **whether a stock will go UP or DOWN the next trading day**  framed as a binary classification problem, not a price-prediction problem (which is far more tractable and honest).
 

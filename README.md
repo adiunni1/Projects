@@ -1,9 +1,9 @@
 # Projects
 A compilation of projects that I've done. 
 
-# Stock Price Movement Predictor
+# Stock Price Movement Predictor 📈
 
-I was interested in creating an end-to-end machine learning pipeline that predicts **whether a stock will go UP or DOWN the next trading day** and framed as a binary classification problem instead of a price-prediction problem (which is far more tractable and honest).
+An end-to-end machine learning pipeline that predicts **whether a stock will go UP or DOWN the next trading day** — framed as a binary classification problem, not a price-prediction problem (which is far more tractable and honest).
 
 Built to practice time-series feature engineering, XGBoost classification, and deploying ML models as serverless REST APIs on AWS.
 
@@ -17,7 +17,7 @@ POST https://<your-api-gateway-url>/prod/predict
 
 ## Why Classification, Not Regression?
 
-We know that predicting exact stock prices is notoriously unreliable, so I didn't have any expectation that I'd be able to make something that'd be 100% accurate but I tried to get as close as possible. What was more imperative to me was understanding how to analyze and approach the problem more so than the solution itself. Predicting *direction* (up or down) is a more tractable problem, which is that it transforms an unbounded regression target into a binary label, and the question "will this go up tomorrow?" maps cleanly to real trading decisions.
+Predicting exact stock prices is notoriously unreliable. Predicting *direction* (up or down) is a more tractable problem: it transforms an unbounded regression target into a binary label, and the question "will this go up tomorrow?" maps cleanly to real trading decisions.
 
 ---
 
@@ -74,7 +74,7 @@ All features are computed from raw OHLCV (Open, High, Low, Close, Volume) data:
 
 ## Key Design Decision: Time-Aware Train/Test Split
 
-Stock data is sequential. Randomly shuffling before splitting would allow the model to "see the future" during training, which is a form of data leakage that inflates test accuracy but fails in production.
+Stock data is sequential. Randomly shuffling before splitting would allow the model to "see the future" during training — a form of data leakage that inflates test accuracy but fails in production.
 
 ```
 ────────────────────────────────────────────────────────
@@ -110,7 +110,78 @@ After all four rounds of improvement (oversampling, VIX/SPY features, threshold 
 | AMZN | 49% | 54% |
 | NVDA | 45% | 5% |
 
-> **Note:** A naive "always predict UP" baseline lands around ~53% accuracy (markets go up more than they go down long-term). None of these tickers beat it. AMZN and GOOGL showed the strongest signal, with UP recall in a more usable 44–54% range. AAPL and NVDA are the weakest: NVDA's 2023–2024 AI-driven rally was such a sustained, structurally-different regime that historical technical patterns from earlier years no longer transferred, and AAPL similarly struggled to find real signal in this window. These numbers are a reminder that the earlier "Model Development Journey" fixes addressed real bugs (the always-predict-DOWN behavior, the miscalibrated threshold) without guaranteeing genuine predictive edge. The imbalance and threshold fixes make a model's predictions *sane*, not necessarily *accurate*.
+> **Note:** A naive "always predict UP" baseline lands around ~53% accuracy (markets go up more than they go down long-term) — none of these tickers beat it. AMZN and GOOGL showed the strongest signal, with UP recall in a more usable 44–54% range. AAPL and NVDA are the weakest: NVDA's 2023–2024 AI-driven rally was such a sustained, structurally-different regime that historical technical patterns from earlier years no longer transferred, and AAPL similarly struggled to find real signal in this window. These numbers are a reminder that the earlier "Model Development Journey" fixes addressed real bugs (the always-predict-DOWN behavior, the miscalibrated threshold) without guaranteeing genuine predictive edge — imbalance and threshold fixes make a model's predictions *sane*, not necessarily *accurate*.
+
+---
+
+## Walk-Forward Validation
+
+A single 80/20 train/test split only shows performance on one slice of history. To check whether that performance holds up across different market conditions, `train_model.py` also supports **walk-forward validation**: train on a rolling 3-year window, test on the following 6 months, then step forward 6 months and repeat — from 2018 through 2025.
+
+```bash
+python train_model.py --ticker AAPL --bucket your-bucket-name --walkforward
+```
+
+Results are printed as a summary table and saved to `s3://your-bucket-name/stock-predictor/{ticker}_walkforward.csv`.
+
+### Results (AAPL, 8 windows, 2018–2025)
+
+| Window | Train Period | Test Period | Threshold | Accuracy | Precision | Recall | F1 |
+|---|---|---|---|---|---|---|---|
+| 1 | 2018-01 → 2021-01 | 2021-01 → 2021-07 | 0.50 | 48.4% | 48.4% | 23.8% | 0.319 |
+| 2 | 2018-07 → 2021-07 | 2021-07 → 2022-01 | 0.50 | 51.6% | 72.7% | 22.2% | 0.340 |
+| 3 | 2019-01 → 2022-01 | 2022-01 → 2022-07 | 0.50 | 48.4% | 43.5% | 34.5% | 0.385 |
+| 4 | 2019-07 → 2022-07 | 2022-07 → 2023-01 | 0.50 | 50.4% | 46.6% | 45.8% | 0.462 |
+| 5 | 2020-01 → 2023-01 | 2023-01 → 2023-07 | 0.45 | 48.4% | 55.6% | 49.3% | 0.522 |
+| 6 | 2020-07 → 2023-07 | 2023-07 → 2024-01 | 0.50 | 50.8% | 54.8% | 58.0% | 0.563 |
+| 7 | 2021-01 → 2024-01 | 2024-01 → 2024-07 | 0.50 | 46.0% | 48.0% | 56.3% | 0.518 |
+| 8 | 2021-07 → 2024-07 | 2024-07 → 2025-01 | 0.50 | 39.1% | 50.0% | 1.3% | 0.025 |
+| **Average** | | | | **47.9%** | **52.4%** | **36.4%** | **0.392** |
+
+> **Key finding — performance is regime-dependent, not stable.** UP recall rises from 23.8% in window 1 to a peak in windows 5–7 (Jan 2023–Jul 2024), where it holds in the 49–58% range — the model's strongest, most usable stretch. Window 8 (Jul–Dec 2024) then collapses to near-zero recall (1.3%), missing almost every actual up day in that period despite accuracy only dropping to 39%. That combination — recall falling off a cliff while accuracy stays in a plausible range — is a signature of the model reverting to predicting the majority class once the market regime it was trained on stops matching the test period.
+>
+> The broadly steady 1→6 climb also suggests **recent training data carries more signal than older data**: each window's 3-year train set slides forward in time, and performance improves as older, less-relevant history rolls out of it. That motivates trying a **shorter training window** (e.g. 1–2 years instead of 3) in a future iteration — dropping stale data faster may help the model adapt to regime shifts like the one that broke window 8, instead of diluting recent patterns with years-old ones.
+
+### Cross-Ticker Comparison (All 5 Tickers, 8 Windows Each)
+
+Running the same walk-forward validation on all 5 tickers shows how much AAPL's numbers generalize:
+
+| Ticker | Avg Accuracy | Avg Precision | Avg Recall | Avg F1 | Window 8 UP Recall |
+|---|---|---|---|---|---|
+| AAPL | 47.9% | 52.4% | 36.4% | 0.392 | 1.3% |
+| MSFT | 50.0% | 52.0% | 49.8% | 0.487 | 66.2% |
+| GOOGL | 51.2% | 59.9% | 53.7% | 0.509 | 51.4% |
+| AMZN | 47.8% | 50.4% | 44.7% | 0.420 | 17.9% |
+| NVDA | 49.4% | 56.0% | 45.8% | 0.454 | 77.3% |
+
+> **Key finding — the window 8 collapse is stock-specific to AAPL, not a market-wide regime shift.** If Jul–Dec 2024 had broken the model for every ticker, that would point to a broad macro shock the model couldn't handle. Instead, only AAPL's UP recall collapsed to near-zero (1.3%) in window 8 — MSFT (66.2%), GOOGL (51.4%), and NVDA (77.3%) all saw window-8 recall *above* their own averages, and AMZN dipped (17.9% vs. a 44.7% average) but nowhere near AAPL's near-total miss. That rules out "the whole market changed regime" as the explanation and points instead to something AAPL-specific in that stretch — consistent with the earlier note in [Results](#results-test-set-20152025) that AAPL's technical indicators struggled to find signal in this window even in the single-split evaluation.
+
+---
+
+## Backtesting
+
+Walk-forward validation shows the model's predictive edge is modest and regime-dependent — the next question is whether that edge is worth anything in dollar terms. `backtest.py` simulates a simple trading strategy on each ticker's existing test period (Jan 2023–Dec 2024): starting with $10,000, hold the stock from close to close whenever the model predicts UP, sit in cash whenever it predicts DOWN, and compare the result against a SPY buy-and-hold benchmark starting with the same $10,000.
+
+```bash
+python backtest.py --ticker AAPL --bucket your-bucket-name
+```
+
+### Results (Jan 2023 – Dec 2024)
+
+![GOOGL Model Strategy vs. SPY Buy & Hold](GOOGL_backtest.png)
+
+| Ticker | Model Strategy Return | Final Value | Gap vs. SPY |
+|---|---|---|---|
+| AAPL | -0.27% | $9,972.61 | -51.5 pts |
+| MSFT | +30.07% | $13,007.24 | -21.2 pts |
+| GOOGL | +42.85% | $14,284.68 | -8.4 pts |
+| AMZN | +28.11% | $12,810.82 | -23.1 pts |
+| NVDA | +32.49% | $13,249.32 | -18.7 pts |
+| **SPY Buy & Hold** | **+51.22%** | **$15,122.20** | — |
+
+> **Key finding — four of five strategies were profitable, but none beat SPY.** MSFT, GOOGL, AMZN, and NVDA all ended the two-year period with real gains (+28% to +43%); AAPL was the outlier, finishing essentially flat with a small loss (-0.27%), consistent with its weak walk-forward and single-split results elsewhere in this README. GOOGL came closest to the benchmark, trailing SPY by only 8.4 percentage points — still a meaningful gap, but the smallest of the five, which is why its chart is shown above.
+>
+> This isn't surprising given the model's ~44–52% test-set accuracy reported earlier: Jan 2023–Dec 2024 was a strong, sustained bull market (SPY +51% in two years), and beating buy-and-hold through a rally like that is an extremely high bar — professional active managers routinely fail to clear it too. A more revealing test of whether this model earns its keep would be **risk-adjusted returns** (Sharpe ratio, max drawdown) rather than raw returns, and/or performance during **bear or sideways markets**, where a model that can rotate to cash on predicted-DOWN days has more room to add value over a benchmark that can only fall with the market. That's a natural next analysis rather than something this backtest currently measures.
 
 ---
 
@@ -118,308 +189,35 @@ After all four rounds of improvement (oversampling, VIX/SPY features, threshold 
 
 The model went through several rounds of debugging and iteration after the initial baseline underperformed badly on recent data:
 
-1. **Baseline XGBoost — ~44% accuracy.** The first version, trained on technical indicators alone, barely beat a coin flip and was worse than the "always predict UP" naive baseline. Digging into the confusion matrix showed the model was defaulting to DOWN almost every time and the UP recall was only ~9%.
+1. **Baseline XGBoost — ~44% accuracy.** The first version, trained on technical indicators alone, barely beat a coin flip and was worse than the "always predict UP" naive baseline. Digging into the confusion matrix showed the model was defaulting to DOWN almost every time — UP recall was only ~9%.
 
-2. **Class balancing (oversampling).** The label distribution is mildly imbalanced (~53% UP / 47% DOWN), but that alone didn't explain a model that predicted DOWN 90%+ of the time. `scale_pos_weight` was tried first and didn't move the needle enough, so my approach switched to `RandomOverSampler` (imbalanced-learn), duplicating minority-class rows in the *train* split only (never the test split, to avoid leaking duplicated test-like rows into evaluation) until it was 50/50. Model capacity was also reduced (`max_depth=3`, `min_child_weight=5`, fewer estimators) to fight overfitting on the noisier training signal.
+2. **Class balancing (oversampling).** The label distribution is mildly imbalanced (~53% UP / 47% DOWN), but that alone didn't explain a model that predicted DOWN 90%+ of the time. `scale_pos_weight` was tried first and didn't move the needle enough, so the approach switched to `RandomOverSampler` (imbalanced-learn), duplicating minority-class rows in the *train* split only (never the test split, to avoid leaking duplicated test-like rows into evaluation) until it was 50/50. Model capacity was also reduced (`max_depth=3`, `min_child_weight=5`, fewer estimators) to fight overfitting on the noisier training signal.
 
-3. **Market-context features (VIX + SPY).** Technical indicators derived purely from AAPL's own OHLCV data describe the stock in isolation, but these say nothing about the broader market regime. Two features were added: `vix_close` (CBOE Volatility Index — the market's "fear gauge") and `spy_return` (S&P 500 daily return — broad market direction), both merged onto the AAPL date index and forward-filled. The idea: a stock's next-day move is influenced by whether the whole market is risk-on or risk-off, not just its own recent price action.
+3. **Market-context features (VIX + SPY).** Technical indicators derived purely from AAPL's own OHLCV data describe the stock in isolation — they say nothing about the broader market regime. Two features were added: `vix_close` (CBOE Volatility Index — the market's "fear gauge") and `spy_return` (S&P 500 daily return — broad market direction), both merged onto the AAPL date index and forward-filled. The idea: a stock's next-day move is influenced by whether the whole market is risk-on or risk-off, not just its own recent price action.
 
-4. **Decision threshold tuning.** Even with balanced training data, the default 0.5 classification threshold turned out to be a poor cutoff for this problem. It swept in a train-set threshold search (0.30–0.50 in steps of 0.05, maximizing F1) and applied the winning threshold to test-set predictions. This threshold is persisted to the metrics CSV in S3 and read by `lambda_function.py` at inference time, so the live API and the offline evaluation stay consistent.
+4. **Decision threshold tuning.** Even with balanced training data, the default 0.5 classification threshold turned out to be a poor cutoff for this problem — it swept in a train-set threshold search (0.30–0.50 in steps of 0.05, maximizing F1) and applied the winning threshold to test-set predictions. This threshold is persisted to the metrics CSV in S3 and read by `lambda_function.py` at inference time, so the live API and the offline evaluation stay consistent.
 
-**Honest caveat:** even after all four rounds of improvement, technical indicators (even augmented with VIX/SPY context) have a limited ceiling on 2023–2024 AAPL data. That period included unusually concentrated conditions (the AI/mega-cap rally, a fast Fed hiking cycle, and a handful of outsized single-day moves around earnings) that don't resemble the more "normal" price action technical indicators are typically evaluated against. The model's edge over a naive baseline in this window is real but modest, and shouldn't be mistaken for a robust trading signal.
+5. **News sentiment (Finnhub + VADER) — no improvement.** A `sentiment_score` feature was added by pulling daily headlines per ticker from the Finnhub API, scoring each with NLTK's VADER sentiment analyzer, and merging the daily mean compound score onto the feature set (forward-filled, defaulting to 0.0 on days with no news). The hypothesis was that market-wide VIX/SPY features miss stock-specific news events that move a single name independent of the broader market. In practice it **didn't help and hurt one ticker**: AMZN's average UP recall dropped from 54% to 31%, while the other four tickers were essentially unchanged. Three likely reasons:
+   - **VADER is tuned for social media, not financial news.** It was built and validated on tweets and short informal text, where sentiment cues (punctuation, capitalization, slang) work differently than in headline-style financial reporting, where "growth slows" and "misses estimates" carry strong negative signal VADER's lexicon isn't tuned to catch.
+   - **Finnhub's free tier has sparse historical coverage.** Company-news history is thin the further back you query, so a large fraction of training rows fall back to the neutral 0.0 default rather than a real sentiment signal — diluting whatever signal exists in the days that do have coverage.
+   - **Daily aggregation loses intraday timing.** Averaging all of a day's headlines into one score discards *when* during the day a headline landed relative to market open/close, and mixes pre-market catalysts with after-hours noise into a single number.
+
+   This is a **known limitation**, not a bug — the feature is live in the pipeline (`sentiment_score` in `FEATURE_COLS`) but isn't currently pulling its weight. A finance-specific language model like **FinBERT** (pretrained on financial text rather than general/social-media text) is a more promising direction than swapping sentiment sources within the same VADER-based approach.
+
+**Honest caveat:** even after five rounds of improvement, technical indicators — even augmented with VIX/SPY context and news sentiment — have a limited ceiling on 2023–2024 AAPL data. That period included unusually concentrated conditions (the AI/mega-cap rally, a fast Fed hiking cycle, and a handful of outsized single-day moves around earnings) that don't resemble the more "normal" price action technical indicators are typically evaluated against. The model's edge over a naive baseline in this window is real but modest, and shouldn't be mistaken for a robust trading signal.
 
 ---
 
 ## What I Learned
 
-- **A model that "looks" broken (always predicting one class) is usually a class-imbalance or threshold problem before it's an architecture problem.** Reaching for a fancier model before checking the confusion matrix would have wasted time. The fix here was data balancing and threshold calibration, not a different algorithm.
+- **A model that "looks" broken (always predicting one class) is usually a class-imbalance or threshold problem before it's an architecture problem.** Reaching for a fancier model before checking the confusion matrix would have wasted time — the fix here was data balancing and threshold calibration, not a different algorithm.
 - **`scale_pos_weight` and oversampling are not interchangeable, even though both "address imbalance."** `scale_pos_weight` reweights the loss function but leaves the data untouched, which can be too weak a signal for gradient-boosted trees with shallow depth. Oversampling changes what the trees actually split on. Worth trying both rather than assuming the textbook answer works.
-- **The default 0.5 threshold is an assumption, not a law.** It's only optimal when classes are balanced and false positives/negatives are equally costly. Neither is guaranteed to hold, and tuning it on the train set (never the test set) was a cheap, high-leverage fix.
+- **The default 0.5 threshold is an assumption, not a law.** It's only optimal when classes are balanced and false positives/negatives are equally costly — neither is guaranteed to hold, and tuning it on the train set (never the test set) was a cheap, high-leverage fix.
 - **A stock's own technical indicators are an incomplete picture.** Two features describing the *entire market's* mood (VIX, SPY) meaningfully diversified the feature set beyond "what has AAPL's price been doing."
-- **Time-aware splitting matters even more once you start balancing classes.** It would have been easy to oversample before splitting and leak duplicated rows across train/test. I'd say this is worth double-checking the split boundary every time the pipeline changes.
-- **Backtest-period selection matters.** 2023–2024 was an unusually distinctive market regime for AAPL. The results here shouldn't be assumed to generalize to calmer periods or to other tickers without re-validation.
+- **Time-aware splitting matters even more once you start balancing classes.** It would have been easy to oversample before splitting and leak duplicated rows across train/test — worth double-checking the split boundary every time the pipeline changes.
+- **Backtest-period selection matters.** 2023–2024 was an unusually distinctive market regime for AAPL; results here shouldn't be assumed to generalize to calmer periods or to other tickers without re-validation.
 
 ---
-
-# Deploying `lambda_function.py` to AWS Lambda + API Gateway
-
-Step-by-step guide to deploy the live prediction endpoint. Assumes you've already
-run `data_pipeline.py` and `train_model.py` for at least one ticker, so a trained
-model exists at `s3://your-bucket-name/stock-predictor/{TICKER}_xgb_model.joblib`.
-
-Commands below use the AWS CLI v2. Replace `<...>` placeholders (account ID,
-region, bucket name, etc.) with your own values.
-
----
-
-## 0. Prerequisites
-
-- AWS CLI v2 installed and configured (`aws configure`)
-- Python 3.12 installed locally (matches the Lambda runtime — dependencies built
-  on a different Python/OS combo can fail to import at runtime, especially
-  binary packages like `numpy`/`xgboost`)
-- Your account ID and preferred region handy:
-
-```bash
-export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export AWS_REGION=us-west-2   # or your region
-export BUCKET=your-bucket-name
-```
-
----
-
-## 1. Package the code + dependencies into a zip
-
-`lambda_function.py` only needs a subset of `requirements.txt` at inference
-time — training-only packages (`matplotlib`, `seaborn`, `scikit-learn` for
-oversampling, `imbalanced-learn`) aren't imported by the handler and would
-needlessly bloat the deployment package. Use a slimmer, inference-only list:
-
-```bash
-cat > requirements-lambda.txt << 'EOF'
-joblib
-numpy
-pandas
-requests
-yfinance
-nltk
-xgboost
-scikit-learn
-EOF
-```
-
-> `scikit-learn` is listed even though `lambda_function.py` doesn't import it
-> directly — `XGBClassifier` (the class `joblib.load()` reconstructs) is built
-> on scikit-learn's estimator interface, so it must be importable for the
-> pickled model to load.
-
-Build the package:
-
-```bash
-mkdir -p build/package
-pip install -r requirements-lambda.txt -t build/package --platform manylinux2014_x86_64 \
-    --python-version 3.12 --only-binary=:all:
-cp lambda_function.py build/package/
-
-cd build/package
-zip -r ../lambda_deploy.zip .
-cd ../..
-```
-
-> **`--platform`/`--only-binary` matter** if you're building on macOS or an ARM
-> Mac: Lambda's default runtime is `x86_64` Linux, so pip must fetch Linux
-> wheels rather than compiling/linking against your local OS. Add
-> `--architectures arm64` to the `create-function` call below (and drop
-> `--platform`/use `manylinux2014_aarch64`) if you'd rather run on Graviton.
-
-> **Size check:** `boto3`/`botocore` are preinstalled in the Lambda Python
-> runtime, so they're deliberately excluded above. Even so, `pandas` +
-> `numpy` + `xgboost` + `scikit-learn` together can approach Lambda's
-> **250 MB unzipped** deployment package limit. If you hit it: strip
-> `**/tests`, `**/*.dist-info`, and `**/__pycache__` from `build/package`
-> before zipping, or switch to a **container image** deployment (`docker
-> build` off `public.ecr.aws/lambda/python:3.12`, push to ECR, and point
-> `create-function` at the image instead of a zip) — container images get a
-> 10 GB budget instead of 250 MB.
-
----
-
-## 2. Create the IAM execution role
-
-```bash
-cat > trust-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": { "Service": "lambda.amazonaws.com" },
-    "Action": "sts:AssumeRole"
-  }]
-}
-EOF
-
-aws iam create-role \
-  --role-name stock-predictor-lambda-role \
-  --assume-role-policy-document file://trust-policy.json
-
-# CloudWatch Logs permissions
-aws iam attach-role-policy \
-  --role-name stock-predictor-lambda-role \
-  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-
-# Read-only access to the model/metrics objects in your bucket
-cat > s3-read-policy.json << EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": "s3:GetObject",
-    "Resource": "arn:aws:s3:::${BUCKET}/stock-predictor/*"
-  }]
-}
-EOF
-
-aws iam put-role-policy \
-  --role-name stock-predictor-lambda-role \
-  --policy-name stock-predictor-s3-read \
-  --policy-document file://s3-read-policy.json
-
-export ROLE_ARN=arn:aws:iam::${AWS_ACCOUNT_ID}:role/stock-predictor-lambda-role
-```
-
-IAM roles can take a few seconds to propagate — if `create-function` in the
-next step fails with an assume-role error, wait ~10s and retry.
-
----
-
-## 3. Create the Lambda function
-
-```bash
-aws lambda create-function \
-  --function-name stock-predictor \
-  --runtime python3.12 \
-  --handler lambda_function.lambda_handler \
-  --role "$ROLE_ARN" \
-  --zip-file fileb://build/lambda_deploy.zip \
-  --timeout 30 \
-  --memory-size 1024 \
-  --region "$AWS_REGION"
-```
-
-- **Timeout 30s** — a cold-start prediction chains a yfinance download, an
-  optional Finnhub call, VADER lexicon loading, and model inference; the
-  default 3s timeout will not be enough.
-- **Memory 1024 MB** — `pandas`/`numpy`/`xgboost` are memory-hungry to import;
-  under-provisioning shows up as slow cold starts more than outright failures.
-
-## 4. Set environment variables
-
-```bash
-aws lambda update-function-configuration \
-  --function-name stock-predictor \
-  --environment "Variables={S3_BUCKET=$BUCKET,FINNHUB_API_KEY=YOUR_FINNHUB_KEY}" \
-  --region "$AWS_REGION"
-```
-
-- `S3_BUCKET` — required; matches `--bucket` used with `data_pipeline.py`/`train_model.py`.
-- `FINNHUB_API_KEY` — optional. If omitted, `sentiment_score` falls back to
-  `0.0` for every prediction (see `add_sentiment_features()` in
-  `lambda_function.py`) rather than the function failing.
-- `MODEL_KEY` — optional; only set this if you want to pin a specific model
-  object instead of the per-ticker default
-  (`stock-predictor/{TICKER}_xgb_model.joblib`).
-
-> Both `yfinance` and the Finnhub request need outbound internet access. A
-> Lambda function **not** attached to a VPC has this by default; if you later
-> attach it to a VPC (e.g. to reach an RDS instance), you'll also need a NAT
-> gateway or these calls will start timing out.
-
----
-
-## 5. Create an HTTP API Gateway route
-
-```bash
-export LAMBDA_ARN=$(aws lambda get-function --function-name stock-predictor \
-    --query 'Configuration.FunctionArn' --output text --region "$AWS_REGION")
-
-# 5a. Create the HTTP API
-export API_ID=$(aws apigatewayv2 create-api \
-  --name stock-predictor-api \
-  --protocol-type HTTP \
-  --query 'ApiId' --output text --region "$AWS_REGION")
-
-# 5b. Create the Lambda proxy integration
-export INTEGRATION_ID=$(aws apigatewayv2 create-integration \
-  --api-id "$API_ID" \
-  --integration-type AWS_PROXY \
-  --integration-uri "$LAMBDA_ARN" \
-  --payload-format-version 2.0 \
-  --query 'IntegrationId' --output text --region "$AWS_REGION")
-
-# 5c. Route POST /predict to that integration
-aws apigatewayv2 create-route \
-  --api-id "$API_ID" \
-  --route-key "POST /predict" \
-  --target "integrations/$INTEGRATION_ID" \
-  --region "$AWS_REGION"
-
-# 5d. Auto-deploying default stage
-aws apigatewayv2 create-stage \
-  --api-id "$API_ID" \
-  --stage-name '$default' \
-  --auto-deploy \
-  --region "$AWS_REGION"
-
-# 5e. Let API Gateway invoke the function
-aws lambda add-permission \
-  --function-name stock-predictor \
-  --statement-id apigateway-invoke \
-  --action lambda:InvokeFunction \
-  --principal apigateway.amazonaws.com \
-  --source-arn "arn:aws:execute-api:${AWS_REGION}:${AWS_ACCOUNT_ID}:${API_ID}/*/*/predict" \
-  --region "$AWS_REGION"
-
-echo "Endpoint: https://${API_ID}.execute-api.${AWS_REGION}.amazonaws.com/predict"
-```
-
----
-
-## 6. Test it
-
-```bash
-curl -X POST "https://${API_ID}.execute-api.${AWS_REGION}.amazonaws.com/predict" \
-  -H "Content-Type: application/json" \
-  -d '{"ticker": "AAPL"}'
-```
-
-Expected response:
-
-```json
-{
-  "ticker": "AAPL",
-  "prediction": "UP",
-  "confidence": 0.6134,
-  "latest_close": 189.42,
-  "latest_date": "2025-01-10",
-  "model_version": "xgb_v1"
-}
-```
-
-If it fails, check CloudWatch Logs first:
-
-```bash
-aws logs tail /aws/lambda/stock-predictor --follow --region "$AWS_REGION"
-```
-
-Common first-deploy issues:
-- **`Unable to import module 'lambda_function'`** — a dependency was built for
-  the wrong OS/architecture (see the `--platform` note in step 1).
-- **`errorMessage: "No data returned for ticker '...'"`** — check the ticker
-  symbol, and that the Lambda has outbound internet access (see the VPC note
-  in step 4).
-- **Timeout errors** — bump `--timeout` further; cold starts pulling in
-  `pandas`/`xgboost` plus two outbound API calls can be slow on first
-  invocation.
-
----
-
-## 7. Redeploying after code changes
-
-```bash
-cp lambda_function.py build/package/
-rm -f build/lambda_deploy.zip
-cd build/package && zip -r ../lambda_deploy.zip . && cd ../..
-
-aws lambda update-function-code \
-  --function-name stock-predictor \
-  --zip-file fileb://build/lambda_deploy.zip \
-  --region "$AWS_REGION"
-```
-
-The dependency list (`requirements-lambda.txt`) rarely changes; you'll usually
-only need to re-run the `cp` + `zip` + `update-function-code` sequence above
-after editing `lambda_function.py`.
-
 
 ## How to Run
 
@@ -446,11 +244,7 @@ python train_model.py --ticker AAPL --bucket your-bucket-name
 ```
 
 ### 5. Deploy Lambda + API Gateway
-1. Zip `lambda_function.py` with its dependencies (yfinance, xgboost, joblib, boto3)
-2. Create a Lambda function (Python 3.12 runtime)
-3. Set environment variables: `S3_BUCKET=your-bucket-name`
-4. Attach an IAM role with `s3:GetObject` permission on your bucket
-5. Create an API Gateway POST route pointing to the Lambda
+See [deploy.md](deploy.md) for the full step-by-step CLI walkthrough — packaging dependencies, IAM role + policy JSON, environment variables, and the HTTP API Gateway route.
 
 ### 6. Call the live API
 ```bash
@@ -477,9 +271,13 @@ curl -X POST https://<your-api-gateway-url>/prod/predict \
 
 | File | Purpose |
 |---|---|
-| `data_pipeline.py` | Fetch data, engineer 24 features, upload to S3 |
-| `train_model.py` | Time-aware split, XGBoost training, evaluation + plots |
+| `data_pipeline.py` | Fetch data, engineer features (incl. sentiment), upload to S3 |
+| `train_model.py` | Time-aware split, walk-forward validation, XGBoost training, evaluation + plots |
+| `backtest.py` | Simulates the model's trading strategy vs. a SPY buy-and-hold benchmark |
 | `lambda_function.py` | Serverless inference handler for API Gateway |
+| `run_all.py` | Runs the pipeline + training for a batch of tickers |
+| `deploy.md` | Step-by-step Lambda + API Gateway deployment guide |
+| `requirements.txt` | Python dependencies |
 | `README.md` | This file |
 
 ---
@@ -487,7 +285,7 @@ curl -X POST https://<your-api-gateway-url>/prod/predict \
 ## Next Steps
 
 - [ ] **Compare XGBoost vs. LSTM** on the same feature set — worth checking whether a sequence model captures temporal patterns (e.g. multi-day momentum regimes) that flattened, per-row technical indicators miss.
-- [ ] **Add sentiment features** (news headlines, social media, earnings call tone) — technical + market-context features alone hit a ceiling on 2023–2024 data; sentiment could capture information the price action hasn't priced in yet.
+- [ ] **Replace VADER with FinBERT for sentiment scoring** — the current Finnhub + VADER `sentiment_score` feature (see [Model Development Journey](#model-development-journey)) didn't move the needle and hurt AMZN recall; a finance-specific language model trained on financial text rather than social media is a more promising source of sentiment signal.
 - [ ] Add more tickers (portfolio-level signals)
 - [ ] Add EventBridge to retrain the model weekly on fresh data
 - [ ] Backtest a simple trading strategy using the model's signals
@@ -502,7 +300,6 @@ curl -X POST https://<your-api-gateway-url>/prod/predict \
 **Visualisation:** Matplotlib, Seaborn  
 **AWS:** S3, IAM, Lambda, API Gateway, CloudWatch  
 **Serialisation:** joblib
-
 
 
 # CAHOOTS Welfare Check Analyzer — Cloud ML Pipeline
